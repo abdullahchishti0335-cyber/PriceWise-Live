@@ -56,4 +56,4 @@
 
 1. **Clone the repo:**
    ```bash
-   git clone https://github.com/abdullahchishti0335-cyber/pricewise-live.git
+   git clone https://github.com/abdullahchishti0335-cyber/PriceWise-Live.git
