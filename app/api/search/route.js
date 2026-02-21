@@ -1,15 +1,10 @@
 import { NextResponse } from 'next/server'
 
-// ONE RapidAPI key works for all APIs
+// Get from Vercel environment variables
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
-
-// API hosts (update these if your hosts are different)
-const API_HOSTS = {
-  amazon: 'real-time-amazon-data.p.rapidapi.com',
-  ebay: 'ebay-search-result.p.rapidapi.com',
-  walmart: 'axesso-walmart-data-service.p.rapidapi.com',
-  target: 'target-com-shopping-api.p.rapidapi.com'
-}
+const EBAY_API_HOST = process.env.EBAY_API_HOST || 'ebay-search-result.p.rapidapi.com'
+const WALMART_API_HOST = process.env.WALMART_API_HOST || 'axesso-walmart-data-service.p.rapidapi.com'
+const TARGET_API_HOST = process.env.TARGET_API_HOST || 'target-com-shopping-api.p.rapidapi.com'
 
 export async function POST(request) {
   const { query, stores } = await request.json()
@@ -19,6 +14,8 @@ export async function POST(request) {
   }
 
   console.log(`🔍 LIVE SEARCH: "${query}"`)
+  console.log('Using hosts:', { EBAY_API_HOST, WALMART_API_HOST, TARGET_API_HOST })
+  
   const startTime = Date.now()
   const allResults = []
   const errors = []
@@ -28,11 +25,11 @@ export async function POST(request) {
     try {
       console.log('Calling Amazon API...')
       const response = await fetch(
-        `https://${API_HOSTS.amazon}/search?query=${encodeURIComponent(query)}&page=1&country=US`,
+        `https://real-time-amazon-data.p.rapidapi.com/search?query=${encodeURIComponent(query)}&page=1&country=US`,
         {
           headers: {
             'X-RapidAPI-Key': RAPIDAPI_KEY,
-            'X-RapidAPI-Host': API_HOSTS.amazon
+            'X-RapidAPI-Host': 'real-time-amazon-data.p.rapidapi.com'
           },
           cache: 'no-store'
         }
@@ -73,20 +70,23 @@ export async function POST(request) {
   // 2. EBAY API
   if (!stores || stores.includes('eBay')) {
     try {
-      console.log('Calling eBay API...')
+      console.log(`Calling eBay API at: ${EBAY_API_HOST}...`)
       const response = await fetch(
-        `https://${API_HOSTS.ebay}/search/${encodeURIComponent(query)}`,
+        `https://${EBAY_API_HOST}/search/${encodeURIComponent(query)}`,
         {
           headers: {
             'X-RapidAPI-Key': RAPIDAPI_KEY,
-            'X-RapidAPI-Host': API_HOSTS.ebay
+            'X-RapidAPI-Host': EBAY_API_HOST
           },
           cache: 'no-store'
         }
       )
 
+      console.log(`eBay response status: ${response.status}`)
+      
       if (response.ok) {
         const data = await response.json()
+        console.log('eBay data:', JSON.stringify(data).substring(0, 200))
         const items = data.results?.slice(0, 3) || []
         
         items.forEach((p, idx) => {
@@ -105,35 +105,39 @@ export async function POST(request) {
             inStock: true,
             shipping: 'Varies',
             isReal: true,
-            source: 'RapidAPI'
+            source: 'RapidAPI eBay'
           })
         })
         console.log(`✅ eBay: ${items.length} results`)
       } else {
-        errors.push(`eBay: HTTP ${response.status}`)
+        const errorText = await response.text()
+        errors.push(`eBay: HTTP ${response.status} - ${errorText.substring(0, 100)}`)
       }
     } catch (e) {
       errors.push(`eBay: ${e.message}`)
     }
   }
 
-  // 3. WALMART API (Axesso)
+  // 3. WALMART API
   if (!stores || stores.includes('Walmart')) {
     try {
-      console.log('Calling Walmart API...')
+      console.log(`Calling Walmart API at: ${WALMART_API_HOST}...`)
       const response = await fetch(
-        `https://${API_HOSTS.walmart}/walmart/search?keyword=${encodeURIComponent(query)}&page=1&sortBy=price_low_to_high`,
+        `https://${WALMART_API_HOST}/walmart/search?keyword=${encodeURIComponent(query)}&page=1&sortBy=price_low_to_high`,
         {
           headers: {
             'X-RapidAPI-Key': RAPIDAPI_KEY,
-            'X-RapidAPI-Host': API_HOSTS.walmart
+            'X-RapidAPI-Host': WALMART_API_HOST
           },
           cache: 'no-store'
         }
       )
 
+      console.log(`Walmart response status: ${response.status}`)
+      
       if (response.ok) {
         const data = await response.json()
+        console.log('Walmart data:', JSON.stringify(data).substring(0, 200))
         const items = data.items?.slice(0, 3) || []
         
         items.forEach((p, idx) => {
@@ -152,12 +156,13 @@ export async function POST(request) {
             inStock: p.availability === 'In Stock',
             shipping: '2 days',
             isReal: true,
-            source: 'RapidAPI'
+            source: 'RapidAPI Walmart'
           })
         })
         console.log(`✅ Walmart: ${items.length} results`)
       } else {
-        errors.push(`Walmart: HTTP ${response.status}`)
+        const errorText = await response.text()
+        errors.push(`Walmart: HTTP ${response.status} - ${errorText.substring(0, 100)}`)
       }
     } catch (e) {
       errors.push(`Walmart: ${e.message}`)
@@ -167,20 +172,23 @@ export async function POST(request) {
   // 4. TARGET API
   if (!stores || stores.includes('Target')) {
     try {
-      console.log('Calling Target API...')
+      console.log(`Calling Target API at: ${TARGET_API_HOST}...`)
       const response = await fetch(
-        `https://${API_HOSTS.target}/search?query=${encodeURIComponent(query)}&offset=0&limit=3`,
+        `https://${TARGET_API_HOST}/search?query=${encodeURIComponent(query)}&offset=0&limit=3`,
         {
           headers: {
             'X-RapidAPI-Key': RAPIDAPI_KEY,
-            'X-RapidAPI-Host': API_HOSTS.target
+            'X-RapidAPI-Host': TARGET_API_HOST
           },
           cache: 'no-store'
         }
       )
 
+      console.log(`Target response status: ${response.status}`)
+      
       if (response.ok) {
         const data = await response.json()
+        console.log('Target data:', JSON.stringify(data).substring(0, 200))
         const items = data.products?.slice(0, 3) || []
         
         items.forEach((p, idx) => {
@@ -199,12 +207,13 @@ export async function POST(request) {
             inStock: p.availability === 'In Stock',
             shipping: '2 days',
             isReal: true,
-            source: 'RapidAPI'
+            source: 'RapidAPI Target'
           })
         })
         console.log(`✅ Target: ${items.length} results`)
       } else {
-        errors.push(`Target: HTTP ${response.status}`)
+        const errorText = await response.text()
+        errors.push(`Target: HTTP ${response.status} - ${errorText.substring(0, 100)}`)
       }
     } catch (e) {
       errors.push(`Target: ${e.message}`)
@@ -235,7 +244,7 @@ export async function POST(request) {
       success: false,
       error: 'No results found',
       details: errors,
-      message: 'APIs failed. Check if you subscribed to all APIs on RapidAPI.',
+      message: 'APIs failed. Check Vercel logs for details.',
       query,
       timestamp: new Date().toISOString()
     }, { status: 404 })
