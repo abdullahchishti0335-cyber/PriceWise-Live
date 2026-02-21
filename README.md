@@ -57,3 +57,15 @@
 1. **Clone the repo:**
    ```bash
    git clone https://github.com/abdullahchishti0335-cyber/PriceWise-Live.git
+
+## 🤝 Credits & Acknowledgments
+Lead Developer: Muhammad Abdullah Rajpoot 💻
+Inspiration: Built for the global community of price hunters.
+Special Thanks: RapidAPI & Serper.dev for the robust data feeds.
+
+
+## 📄 License
+This project is licensed under the MIT License.
+<p align="center">
+Made with ❤️ for savvy shoppers everywhere.
+</p>
