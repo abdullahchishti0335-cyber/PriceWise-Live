@@ -162,7 +162,7 @@ async function fetchAmazonData(query) {
         rating: parseFloat(p.product_star_rating) || 4.5,
         reviews: p.product_num_ratings || 0,
         image: p.product_photo,
-        url: p.product_url,
+        url: p.product_url, // Direct Amazon link
         inStock: true,
         shipping: '2 days',
         isReal: true,
@@ -226,7 +226,24 @@ async function fetchSerperData(query, selectedStores) {
     }
 
     const title = p.title
-    const url = p.link || p.product_link
+
+    // FIXED: Use direct store link if available, otherwise construct search URL
+    let url = p.link || p.product_link
+
+    // If link is Google Shopping URL, try to construct direct store search URL
+    if (!url || url.includes('google.com/shopping')) {
+      const searchQuery = encodeURIComponent(title)
+      if (storeName === 'Walmart') {
+        url = `https://www.walmart.com/search?q=${searchQuery}`
+      } else if (storeName === 'Target') {
+        url = `https://www.target.com/s?searchTerm=${searchQuery}`
+      } else if (storeName === 'eBay') {
+        url = `https://www.ebay.com/sch/i.html?_nkw=${searchQuery}`
+      } else if (storeName === 'Best Buy') {
+        url = `https://www.bestbuy.com/site/searchpage.jsp?st=${searchQuery}`
+      }
+    }
+
     const image = p.imageUrl || p.thumbnail
 
     if (price > 0 && title) {
@@ -248,7 +265,7 @@ async function fetchSerperData(query, selectedStores) {
           rating: p.rating || 4.0,
           reviews: p.reviews || Math.floor(Math.random() * 1000),
           image: image,
-          url: url,
+          url: url, // Now using direct store link or search URL
           inStock: true,
           shipping: p.shipping || 'Varies',
           isReal: true,
