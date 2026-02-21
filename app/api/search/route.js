@@ -92,39 +92,51 @@ export async function POST(request) {
 
         console.log(`Found ${products.length} products from Google Shopping`)
 
-        // Map Google Shopping results to our format
+        // Process each product and map to our format
         products.forEach((p, idx) => {
-          // Determine store name from source or merchant
-          let storeName = p.source || p.merchant || 'Store'
+          // Get raw source/merchant name
+          const rawSource = (p.source || p.merchant || '').toLowerCase()
+          console.log(`Product ${idx} raw source: "${rawSource}"`)
+
+          // Determine store name with flexible matching
+          let storeName = null
           let storeLogo = '🏪'
           let storeColor = '#666666'
 
-          // Normalize store names
-          const sourceLower = storeName.toLowerCase()
-          if (sourceLower.includes('walmart')) {
+          // Check if this product matches any selected store (flexible matching)
+          if (rawSource.includes('walmart')) {
             storeName = 'Walmart'
             storeLogo = '🛒'
             storeColor = '#0071CE'
-          } else if (sourceLower.includes('target')) {
+          } else if (rawSource.includes('target')) {
             storeName = 'Target'
             storeLogo = '🎯'
             storeColor = '#CC0000'
-          } else if (sourceLower.includes('ebay')) {
+          } else if (rawSource.includes('ebay')) {
             storeName = 'eBay'
             storeLogo = '🏷️'
             storeColor = '#E53238'
-          } else if (sourceLower.includes('best buy')) {
+          } else if (rawSource.includes('best buy') || rawSource.includes('bestbuy')) {
             storeName = 'Best Buy'
             storeLogo = '💻'
             storeColor = '#0046BE'
-          } else if (sourceLower.includes('amazon')) {
+          } else if (rawSource.includes('amazon')) {
             storeName = 'Amazon'
             storeLogo = '📦'
             storeColor = '#FF9900'
           }
 
+          // Skip if we couldn't identify the store
+          if (!storeName) {
+            console.log(`  Skipping: unknown store "${rawSource}"`)
+            return
+          }
+
           // Check if user requested this store
-          if (stores && !stores.includes(storeName)) return
+          if (stores && !stores.includes(storeName)) {
+            console.log(`  Skipping: ${storeName} not in selected stores`)
+            return
+          }
 
           const price = p.price || p.offer?.price || 0
           const title = p.title || p.name
@@ -160,11 +172,16 @@ export async function POST(request) {
               if (!sourcesUsed.includes(storeName)) {
                 sourcesUsed.push(storeName)
               }
+              console.log(`  Added: ${storeName} - ${title.substring(0, 50)}...`)
+            } else {
+              console.log(`  Skipping: duplicate`)
             }
+          } else {
+            console.log(`  Skipping: no price or title`)
           }
         })
 
-        console.log(`✅ Google Shopping: ${products.length} products processed`)
+        console.log(`✅ Google Shopping: processed, sources found: ${sourcesUsed.join(', ')}`)
       } else {
         errors.push(`Product Search: HTTP ${response.status}`)
       }
