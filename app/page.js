@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Search, TrendingDown, Star, ShoppingCart, RefreshCw, AlertCircle } from 'lucide-react'
+import { useState } from 'react'
+import { Search, TrendingDown, Star, ShoppingCart, RefreshCw, Github, Heart } from 'lucide-react'
 
 const styles = {
   container: {
@@ -253,35 +253,55 @@ const styles = {
     fontSize: '14px',
     fontWeight: 600,
   },
-  alertBox: {
-    background: 'rgba(234, 179, 8, 0.1)',
-    border: '1px solid rgba(234, 179, 8, 0.3)',
-    borderRadius: '12px',
-    padding: '16px',
-    marginBottom: '24px',
+  footer: {
+    borderTop: '1px solid rgba(255,255,255,0.1)',
+    padding: '40px 24px',
+    textAlign: 'center',
+    color: '#64748b',
+    fontSize: '14px',
+  },
+  footerContent: {
+    maxWidth: '800px',
+    margin: '0 auto',
+  },
+  footerLinks: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '24px',
+    marginBottom: '16px',
+    flexWrap: 'wrap',
+  },
+  footerLink: {
+    color: '#94a3b8',
+    textDecoration: 'none',
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
-    color: '#eab308',
+    gap: '6px',
+    transition: 'color 0.2s',
+  },
+  credits: {
+    marginTop: '16px',
+    paddingTop: '16px',
+    borderTop: '1px solid rgba(255,255,255,0.05)',
+    fontSize: '12px',
+    color: '#475569',
   },
 }
 
-// Available stores configuration - will be dynamically updated based on results
-const DEFAULT_STORES = [
+// Available stores - Target removed (not returning results)
+const AVAILABLE_STORES = [
   { name: 'Amazon', color: '#FF9900', logo: '📦' },
   { name: 'Walmart', color: '#0071CE', logo: '🛒' },
-  { name: 'Target', color: '#CC0000', logo: '🎯' },
   { name: 'eBay', color: '#E53238', logo: '🏷️' },
   { name: 'Best Buy', color: '#0046BE', logo: '💻' },
 ]
 
 export default function LivePriceComparator() {
   const [query, setQuery] = useState('')
-  const [selectedStores, setSelectedStores] = useState(['Amazon', 'Walmart', 'Target', 'eBay'])
+  const [selectedStores, setSelectedStores] = useState(['Amazon', 'Walmart', 'eBay', 'Best Buy'])
   const [loading, setLoading] = useState(false)
   const [searchResults, setSearchResults] = useState(null)
   const [searchProgress, setSearchProgress] = useState(0)
-  const [availableStores, setAvailableStores] = useState(DEFAULT_STORES)
 
   const toggleStore = (storeName) => {
     setSelectedStores(prev => 
@@ -299,7 +319,7 @@ export default function LivePriceComparator() {
     setSearchProgress(0)
 
     const progressInterval = setInterval(() => {
-      setSearchProgress(prev => Math.min(prev + 10, 90))
+      setSearchProgress(prev => Math.min(prev + 15, 90))
     }, 200)
 
     try {
@@ -313,25 +333,6 @@ export default function LivePriceComparator() {
 
       if (data.success) {
         setSearchResults(data)
-
-        // Update available stores based on results
-        if (data.meta?.storesFound) {
-          const foundStores = data.meta.storesFound
-          const updatedStores = DEFAULT_STORES.filter(s => foundStores.includes(s.name))
-
-          // Add any stores not in default list
-          foundStores.forEach(storeName => {
-            if (!updatedStores.find(s => s.name === storeName)) {
-              updatedStores.push({
-                name: storeName,
-                color: '#666666',
-                logo: '🏪'
-              })
-            }
-          })
-
-          setAvailableStores(updatedStores)
-        }
       } else {
         console.error('Search failed:', data.error)
       }
@@ -346,8 +347,7 @@ export default function LivePriceComparator() {
 
   // Get store config for a result item
   const getStoreConfig = (storeName) => {
-    return availableStores.find(s => s.name === storeName) || 
-           DEFAULT_STORES.find(s => s.name === storeName) ||
+    return AVAILABLE_STORES.find(s => s.name === storeName) ||
            { name: storeName, color: '#666666', logo: '🏪' }
   }
 
@@ -381,7 +381,7 @@ export default function LivePriceComparator() {
           Find the <span style={styles.gradientText}>Best Price</span> Live
         </h2>
         <p style={styles.heroSubtitle}>
-          Real-time price comparison across Amazon, Walmart, Target & more via Google Shopping
+          Real-time price comparison across Amazon, Walmart, eBay & Best Buy
         </p>
 
         <div style={styles.searchContainer}>
@@ -413,7 +413,7 @@ export default function LivePriceComparator() {
         </div>
 
         <div style={styles.storeSelector}>
-          {DEFAULT_STORES.map(store => (
+          {AVAILABLE_STORES.map(store => (
             <button
               key={store.name}
               onClick={() => toggleStore(store.name)}
@@ -429,17 +429,6 @@ export default function LivePriceComparator() {
       {/* Results */}
       {searchResults && (
         <section style={styles.grid}>
-          {/* Alert if some stores not found */}
-          {searchResults.meta?.sourcesUsed && searchResults.meta.sourcesUsed.length < selectedStores.length && (
-            <div style={styles.alertBox}>
-              <AlertCircle size={20} />
-              <span>
-                Showing results from {searchResults.meta.sourcesUsed.join(', ')}. 
-                Other selected stores may not have this product.
-              </span>
-            </div>
-          )}
-
           {/* Stats */}
           <div style={styles.statsGrid}>
             <div style={styles.statCard}>
@@ -534,6 +523,32 @@ export default function LivePriceComparator() {
           })}
         </section>
       )}
+
+      {/* Footer */}
+      <footer style={styles.footer}>
+        <div style={styles.footerContent}>
+          <div style={styles.footerLinks}>
+            <a 
+              href="https://github.com/abdullahchishti0335-cyber" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={styles.footerLink}
+            >
+              <Github size={18} />
+              Muhammad Abdullah Rajpoot
+            </a>
+            <span style={{color: '#475569'}}>•</span>
+            <span style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+              Made with <Heart size={14} color="#ef4444" fill="#ef4444" /> for price hunters
+            </span>
+          </div>
+
+          <div style={styles.credits}>
+            <p>Powered by RapidAPI (Amazon Data) & Serper.dev (Google Shopping) • Deployed on Vercel</p>
+            <p style={{marginTop: '8px'}}>© 2024 PriceWise Live. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

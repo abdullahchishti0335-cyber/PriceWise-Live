@@ -1,7 +1,27 @@
 import { NextResponse } from 'next/server'
 
+/**
+ * PriceWise Live - Real-Time Price Comparison API
+ * Developer: Muhammad Abdullah Rajpoot
+ * GitHub: https://github.com/abdullahchishti0335-cyber
+ * 
+ * Powered by:
+ * - RapidAPI (Real-Time Amazon Data)
+ * - Serper.dev (Google Shopping API)
+ * - Deployed on Vercel
+ */
+
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
 const SERPER_API_KEY = process.env.SERPER_API_KEY
+
+// All supported stores with their identifiers
+const SUPPORTED_STORES = {
+  'Amazon': { logo: '📦', color: '#FF9900' },
+  'Walmart': { logo: '🛒', color: '#0071CE' },
+  'Target': { logo: '🎯', color: '#CC0000' },
+  'eBay': { logo: '🏷️', color: '#E53238' },
+  'Best Buy': { logo: '💻', color: '#0046BE' }
+}
 
 export async function POST(request) {
   const { query, stores } = await request.json()
@@ -18,179 +38,36 @@ export async function POST(request) {
   const errors = []
   const sourcesUsed = []
 
-  // 1. AMAZON API - REAL DATA (Fast)
+  // Parallel API calls for speed
+  const apiPromises = []
+
+  // 1. AMAZON API
   if (!stores || stores.includes('Amazon')) {
-    try {
-      console.log('Calling Amazon API (RapidAPI)...')
-      const response = await fetch(
-        `https://real-time-amazon-data.p.rapidapi.com/search?query=${encodeURIComponent(query)}&page=1&country=US`,
-        {
-          headers: {
-            'X-RapidAPI-Key': RAPIDAPI_KEY,
-            'X-RapidAPI-Host': 'real-time-amazon-data.p.rapidapi.com'
-          },
-          cache: 'no-store'
-        }
-      )
-
-      if (response.ok) {
-        const data = await response.json()
-        const products = data.data?.products?.slice(0, 3) || []
-
-        products.forEach((p, idx) => {
-          const price = parseFloat(p.product_price?.replace(/[^0-9.]/g, '')) || 0
-          const originalPrice = parseFloat(p.product_original_price?.replace(/[^0-9.]/g, '')) || null
-
-          if (price > 0) {
-            allResults.push({
-              id: `amazon-${idx}`,
-              store: 'Amazon',
-              logo: '📦',
-              color: '#FF9900',
-              title: p.product_title || 'Amazon Product',
-              price: price,
-              originalPrice: originalPrice,
-              rating: parseFloat(p.product_star_rating) || 4.5,
-              reviews: p.product_num_ratings || 0,
-              image: p.product_photo,
-              url: p.product_url,
-              inStock: true,
-              shipping: '2 days',
-              isReal: true,
-              source: 'RapidAPI'
-            })
-          }
-        })
-        sourcesUsed.push('Amazon')
-        console.log(`✅ Amazon: ${products.length} results`)
-      } else {
-        errors.push(`Amazon: HTTP ${response.status}`)
-      }
-    } catch (e) {
-      errors.push(`Amazon: ${e.message}`)
-    }
+    apiPromises.push(
+      fetchAmazonData(query).then(results => {
+        allResults.push(...results)
+        if (results.length > 0) sourcesUsed.push('Amazon')
+      }).catch(e => {
+        errors.push(`Amazon: ${e.message}`)
+      })
+    )
   }
 
-  // 2. SERPER GOOGLE SHOPPING API - Fast and reliable
+  // 2. SERPER GOOGLE SHOPPING API (for Walmart, Target, eBay, Best Buy)
   if (!stores || stores.some(s => ['Walmart', 'Target', 'eBay', 'Best Buy'].includes(s))) {
-    try {
-      console.log('Calling Serper Google Shopping API...')
-
-      const response = await fetch('https://google.serper.dev/shopping', {
-        method: 'POST',
-        headers: {
-          'X-API-KEY': SERPER_API_KEY,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          q: query,
-          gl: 'us',
-          hl: 'en',
-          num: 20
-        })
+    apiPromises.push(
+      fetchSerperData(query, stores).then(results => {
+        allResults.push(...results)
+        const foundStores = [...new Set(results.map(r => r.store))]
+        sourcesUsed.push(...foundStores)
+      }).catch(e => {
+        errors.push(`Serper: ${e.message}`)
       })
-
-      if (!response.ok) {
-        throw new Error(`Serper API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-      const products = data.shopping || []
-
-      console.log(`Serper returned ${products.length} shopping results`)
-
-      // Process each product
-      products.forEach((p, idx) => {
-        const sellerName = (p.merchant || p.source || '').toLowerCase()
-        console.log(`Product ${idx}: "${p.title}" from "${sellerName}"`)
-
-        let storeName = null
-        let storeLogo = '🏪'
-        let storeColor = '#666666'
-
-        // Match store names
-        if (sellerName.includes('walmart')) {
-          storeName = 'Walmart'
-          storeLogo = '🛒'
-          storeColor = '#0071CE'
-        } else if (sellerName.includes('target')) {
-          storeName = 'Target'
-          storeLogo = '🎯'
-          storeColor = '#CC0000'
-        } else if (sellerName.includes('ebay')) {
-          storeName = 'eBay'
-          storeLogo = '🏷️'
-          storeColor = '#E53238'
-        } else if (sellerName.includes('best buy') || sellerName.includes('bestbuy')) {
-          storeName = 'Best Buy'
-          storeLogo = '💻'
-          storeColor = '#0046BE'
-        }
-
-        // Skip if not a requested store
-        if (!storeName) {
-          console.log(`  Skipping: unknown seller`)
-          return
-        }
-
-        if (stores && !stores.includes(storeName)) {
-          console.log(`  Skipping: ${storeName} not selected`)
-          return
-        }
-
-        // Parse price
-        let price = 0
-        if (p.price) {
-          price = parseFloat(p.price.toString().replace(/[^0-9.]/g, ''))
-        } else if (p.extracted_price) {
-          price = p.extracted_price
-        }
-
-        const title = p.title
-        const url = p.link || p.product_link
-        const image = p.imageUrl || p.thumbnail
-
-        if (price > 0 && title) {
-          // Avoid duplicates
-          const isDuplicate = allResults.some(r => 
-            r.store === storeName && 
-            r.title.toLowerCase().includes(title.toLowerCase().substring(0, 20))
-          )
-
-          if (!isDuplicate) {
-            allResults.push({
-              id: `${storeName.toLowerCase()}-serper-${idx}`,
-              store: storeName,
-              logo: storeLogo,
-              color: storeColor,
-              title: title,
-              price: price,
-              originalPrice: null,
-              rating: p.rating || 4.0,
-              reviews: p.reviews || Math.floor(Math.random() * 1000),
-              image: image,
-              url: url,
-              inStock: true,
-              shipping: p.shipping || 'Varies',
-              isReal: true,
-              source: 'Serper API'
-            })
-
-            if (!sourcesUsed.includes(storeName)) {
-              sourcesUsed.push(storeName)
-            }
-            console.log(`  ✅ Added ${storeName}: $${price}`)
-          }
-        }
-      })
-
-      console.log(`✅ Serper: processed, found: ${sourcesUsed.filter(s => s !== 'Amazon').join(', ')}`)
-
-    } catch (e) {
-      console.error('Serper error:', e)
-      errors.push(`Serper: ${e.message}`)
-    }
+    )
   }
+
+  // Wait for all APIs to complete
+  await Promise.all(apiPromises)
 
   // Calculate savings
   if (allResults.length > 0) {
@@ -218,8 +95,9 @@ export async function POST(request) {
   }
 
   const searchTime = Date.now() - startTime
+  const uniqueStores = [...new Set(allResults.map(r => r.store))]
 
-  console.log(`\n📊 TOTAL: ${allResults.length} results from ${sourcesUsed.join(', ')}`)
+  console.log(`\n📊 TOTAL: ${allResults.length} results from ${uniqueStores.join(', ')} (${searchTime}ms)`)
   if (errors.length > 0) console.log('❌ Errors:', errors)
 
   if (allResults.length === 0) {
@@ -240,10 +118,147 @@ export async function POST(request) {
     meta: {
       searchTimeMs: searchTime,
       totalResults: allResults.length,
-      storesFound: [...new Set(allResults.map(r => r.store))],
-      sourcesUsed: sourcesUsed,
+      storesFound: uniqueStores,
+      sourcesUsed: [...new Set(sourcesUsed)],
       errors: errors.length > 0 ? errors : undefined
     },
     timestamp: new Date().toISOString()
   })
+}
+
+async function fetchAmazonData(query) {
+  console.log('Calling Amazon API...')
+
+  const response = await fetch(
+    `https://real-time-amazon-data.p.rapidapi.com/search?query=${encodeURIComponent(query)}&page=1&country=US`,
+    {
+      headers: {
+        'X-RapidAPI-Key': RAPIDAPI_KEY,
+        'X-RapidAPI-Host': 'real-time-amazon-data.p.rapidapi.com'
+      },
+      cache: 'no-store'
+    }
+  )
+
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+  const data = await response.json()
+  const products = data.data?.products?.slice(0, 3) || []
+  const results = []
+
+  products.forEach((p, idx) => {
+    const price = parseFloat(p.product_price?.replace(/[^0-9.]/g, '')) || 0
+    const originalPrice = parseFloat(p.product_original_price?.replace(/[^0-9.]/g, '')) || null
+
+    if (price > 0) {
+      results.push({
+        id: `amazon-${idx}`,
+        store: 'Amazon',
+        logo: SUPPORTED_STORES['Amazon'].logo,
+        color: SUPPORTED_STORES['Amazon'].color,
+        title: p.product_title || 'Amazon Product',
+        price: price,
+        originalPrice: originalPrice,
+        rating: parseFloat(p.product_star_rating) || 4.5,
+        reviews: p.product_num_ratings || 0,
+        image: p.product_photo,
+        url: p.product_url,
+        inStock: true,
+        shipping: '2 days',
+        isReal: true,
+        source: 'RapidAPI'
+      })
+    }
+  })
+
+  console.log(`✅ Amazon: ${results.length} results`)
+  return results
+}
+
+async function fetchSerperData(query, selectedStores) {
+  console.log('Calling Serper API...')
+
+  const response = await fetch('https://google.serper.dev/shopping', {
+    method: 'POST',
+    headers: {
+      'X-API-KEY': SERPER_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      q: query,
+      gl: 'us',
+      hl: 'en',
+      num: 40
+    })
+  })
+
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+  const data = await response.json()
+  const products = data.shopping || []
+  const results = []
+
+  console.log(`✅ Serper: ${products.length} results`)
+
+  products.forEach((p, idx) => {
+    const sellerName = (p.merchant || p.source || '').toLowerCase()
+
+    // Find matching store
+    let storeName = null
+    for (const [name, config] of Object.entries(SUPPORTED_STORES)) {
+      if (name === 'Amazon') continue // Skip Amazon, we already have it
+
+      if (sellerName.includes(name.toLowerCase()) || 
+          (name === 'Best Buy' && (sellerName.includes('best buy') || sellerName.includes('bestbuy')))) {
+        storeName = name
+        break
+      }
+    }
+
+    if (!storeName) return
+    if (selectedStores && !selectedStores.includes(storeName)) return
+
+    let price = 0
+    if (p.price) {
+      price = parseFloat(p.price.toString().replace(/[^0-9.]/g, ''))
+    } else if (p.extracted_price) {
+      price = p.extracted_price
+    }
+
+    const title = p.title
+    const url = p.link || p.product_link
+    const image = p.imageUrl || p.thumbnail
+
+    if (price > 0 && title) {
+      // Avoid duplicates
+      const isDuplicate = results.some(r => 
+        r.store === storeName && 
+        r.title.toLowerCase().includes(title.toLowerCase().substring(0, 20))
+      )
+
+      if (!isDuplicate) {
+        results.push({
+          id: `${storeName.toLowerCase()}-serper-${idx}`,
+          store: storeName,
+          logo: SUPPORTED_STORES[storeName].logo,
+          color: SUPPORTED_STORES[storeName].color,
+          title: title,
+          price: price,
+          originalPrice: null,
+          rating: p.rating || 4.0,
+          reviews: p.reviews || Math.floor(Math.random() * 1000),
+          image: image,
+          url: url,
+          inStock: true,
+          shipping: p.shipping || 'Varies',
+          isReal: true,
+          source: 'Serper API'
+        })
+      }
+    }
+  })
+
+  const foundStores = [...new Set(results.map(r => r.store))]
+  console.log(`✅ Serper stores: ${foundStores.join(', ') || 'none'}`)
+  return results
 }
