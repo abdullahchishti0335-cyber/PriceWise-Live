@@ -86,12 +86,10 @@ export async function POST(request) {
         const data = await response.json()
         console.log('eBay data structure:', Object.keys(data))
 
-        // Handle different response structures
         const results = data.results || data.products || data.items || []
         const items = results.slice(0, 3)
 
         items.forEach((p, idx) => {
-          // Handle various price formats
           let price = 99.99
           if (typeof p.price === 'string') {
             price = parseFloat(p.price.replace(/[^0-9.]/g, ''))
@@ -152,12 +150,10 @@ export async function POST(request) {
         const data = await response.json()
         console.log('Walmart data structure:', Object.keys(data))
 
-        // Handle different response structures
         const results = data.results || data.products || data.items || data.data || []
         const items = results.slice(0, 3)
 
         items.forEach((p, idx) => {
-          // Handle various price formats
           let currentPrice = 99.99
           let originalPrice = null
 
@@ -224,7 +220,6 @@ export async function POST(request) {
         const data = await response.json()
         console.log('ProductSearch data structure:', Object.keys(data))
 
-        // Filter for Target products or take first 3
         let products = []
         if (data.data?.products) {
           products = data.data.products.filter(p => 
@@ -232,7 +227,6 @@ export async function POST(request) {
             p.link?.includes('target.com') ||
             p.merchant?.toLowerCase().includes('target')
           )
-          // If no Target-specific results, take any results
           if (products.length === 0) {
             products = data.data.products
           }
@@ -291,4 +285,24 @@ export async function POST(request) {
   if (allResults.length === 0) {
     return NextResponse.json({
       success: false,
-      erro<response clipped><NOTE>Result is longer than **10000 characters**, will be **truncated**.</NOTE>
+      error: 'No results found',
+      details: errors,
+      message: 'APIs failed. Check Vercel logs for details.',
+      query,
+      timestamp: new Date().toISOString()
+    }, { status: 404 })
+  }
+
+  return NextResponse.json({
+    success: true,
+    query,
+    results: allResults,
+    meta: {
+      searchTimeMs: searchTime,
+      totalResults: allResults.length,
+      storesFound: [...new Set(allResults.map(r => r.store))],
+      errors: errors.length > 0 ? errors : undefined
+    },
+    timestamp: new Date().toISOString()
+  })
+}
