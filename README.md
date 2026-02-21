@@ -72,9 +72,9 @@
 
 
 ## 🤝 Credits & Acknowledgments
- Lead Developer: Muhammad Abdullah Rajpoot 💻
- Inspiration: Built for the global community of price hunters.
- Special Thanks: RapidAPI & Serper.dev for the robust data feeds.
+   Lead Developer: Muhammad Abdullah Rajpoot 💻
+   Inspiration: Built for the global community of price hunters.
+   Special Thanks: RapidAPI & Serper.dev for the robust data feeds.
 
 
 ## 📄 License
