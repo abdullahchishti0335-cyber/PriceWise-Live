@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
+// Apify API token (get from https://console.apify.com/account/integrations)
+const APIFY_TOKEN = process.env.APIFY_TOKEN
 
 export async function POST(request) {
   const { query, stores } = await request.json()
@@ -17,15 +18,15 @@ export async function POST(request) {
   const errors = []
   const sourcesUsed = []
 
-  // 1. AMAZON API - REAL DATA
+  // 1. AMAZON API - Still use RapidAPI (it's working)
   if (!stores || stores.includes('Amazon')) {
     try {
-      console.log('Calling Amazon API...')
+      console.log('Calling Amazon API (RapidAPI)...')
       const response = await fetch(
         `https://real-time-amazon-data.p.rapidapi.com/search?query=${encodeURIComponent(query)}&page=1&country=US`,
         {
           headers: {
-            'X-RapidAPI-Key': RAPIDAPI_KEY,
+            'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
             'X-RapidAPI-Host': 'real-time-amazon-data.p.rapidapi.com'
           },
           cache: 'no-store'
@@ -70,123 +71,174 @@ export async function POST(request) {
     }
   }
 
-  // 2. REAL-TIME PRODUCT SEARCH API - REAL DATA FROM GOOGLE SHOPPING
-  // This covers Walmart, Target, Best Buy, eBay, and many other stores
-  if (!stores || stores.includes('Walmart') || stores.includes('Target') || stores.includes('eBay') || stores.includes('Best Buy')) {
+  // 2. APIFY GOOGLE SHOPPING SCRAPER - For Walmart, Target, eBay, etc.
+  if (!stores || stores.some(s => ['Walmart', 'Target', 'eBay', 'Best Buy'].includes(s))) {
     try {
-      console.log('Calling Real-Time Product Search API (Google Shopping)...')
-      const response = await fetch(
-        `https://real-time-product-search.p.rapidapi.com/search-v2?q=${encodeURIComponent(query)}&country=us`,
-        {
+      console.log('Calling Apify Google Shopping Scraper...')
+
+      // Start the actor run
+      const runResponse = await fetch('https://api.apify.com/v2/acts/consummate_mandala~google-shopping-scraper/runs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${APIFY_TOKEN}`
+        },
+        body: JSON.stringify({
+          searchQueries: [query],
+          maxResultsPerQuery: 10,
+          country: 'us',
+          useResidentialProxy: false
+        })
+      })
+
+      if (!runResponse.ok) {
+        throw new Error(`Apify run failed: ${runResponse.status}`)
+      }
+
+      const runData = await runResponse.json()
+      const runId = runData.data.id
+      const datasetId = runData.data.defaultDatasetId
+
+      console.log(`Apify run started: ${runId}, dataset: ${datasetId}`)
+
+      // Wait for run to complete (poll for status)
+      let runComplete = false
+      let attempts = 0
+      const maxAttempts = 30 // 30 seconds timeout
+
+      while (!runComplete && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        const statusResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
           headers: {
-            'X-RapidAPI-Key': RAPIDAPI_KEY,
-            'X-RapidAPI-Host': 'real-time-product-search.p.rapidapi.com'
-          },
-          cache: 'no-store'
-        }
-      )
-
-      if (response.ok) {
-        const data = await response.json()
-        const products = data.data?.products || []
-
-        console.log(`Found ${products.length} products from Google Shopping`)
-
-        // Process each product and map to our format
-        products.forEach((p, idx) => {
-          // Get raw source/merchant name
-          const rawSource = (p.source || p.merchant || '').toLowerCase()
-          console.log(`Product ${idx} raw source: "${rawSource}"`)
-
-          // Determine store name with flexible matching
-          let storeName = null
-          let storeLogo = '🏪'
-          let storeColor = '#666666'
-
-          // Check if this product matches any selected store (flexible matching)
-          if (rawSource.includes('walmart')) {
-            storeName = 'Walmart'
-            storeLogo = '🛒'
-            storeColor = '#0071CE'
-          } else if (rawSource.includes('target')) {
-            storeName = 'Target'
-            storeLogo = '🎯'
-            storeColor = '#CC0000'
-          } else if (rawSource.includes('ebay')) {
-            storeName = 'eBay'
-            storeLogo = '🏷️'
-            storeColor = '#E53238'
-          } else if (rawSource.includes('best buy') || rawSource.includes('bestbuy')) {
-            storeName = 'Best Buy'
-            storeLogo = '💻'
-            storeColor = '#0046BE'
-          } else if (rawSource.includes('amazon')) {
-            storeName = 'Amazon'
-            storeLogo = '📦'
-            storeColor = '#FF9900'
-          }
-
-          // Skip if we couldn't identify the store
-          if (!storeName) {
-            console.log(`  Skipping: unknown store "${rawSource}"`)
-            return
-          }
-
-          // Check if user requested this store
-          if (stores && !stores.includes(storeName)) {
-            console.log(`  Skipping: ${storeName} not in selected stores`)
-            return
-          }
-
-          const price = p.price || p.offer?.price || 0
-          const title = p.title || p.name
-          const url = p.link || p.url
-          const image = p.thumbnail || p.image
-
-          if (price > 0 && title) {
-            // Avoid duplicates (same store + similar title)
-            const isDuplicate = allResults.some(r => 
-              r.store === storeName && 
-              r.title.toLowerCase().includes(title.toLowerCase().substring(0, 20))
-            )
-
-            if (!isDuplicate) {
-              allResults.push({
-                id: `${storeName.toLowerCase()}-${idx}`,
-                store: storeName,
-                logo: storeLogo,
-                color: storeColor,
-                title: title,
-                price: price,
-                originalPrice: null,
-                rating: p.rating?.average || 4.0,
-                reviews: p.reviews_count || Math.floor(Math.random() * 1000),
-                image: image,
-                url: url,
-                inStock: true,
-                shipping: 'Varies',
-                isReal: true,
-                source: 'Google Shopping'
-              })
-
-              if (!sourcesUsed.includes(storeName)) {
-                sourcesUsed.push(storeName)
-              }
-              console.log(`  Added: ${storeName} - ${title.substring(0, 50)}...`)
-            } else {
-              console.log(`  Skipping: duplicate`)
-            }
-          } else {
-            console.log(`  Skipping: no price or title`)
+            'Authorization': `Bearer ${APIFY_TOKEN}`
           }
         })
 
-        console.log(`✅ Google Shopping: processed, sources found: ${sourcesUsed.join(', ')}`)
-      } else {
-        errors.push(`Product Search: HTTP ${response.status}`)
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json()
+          if (statusData.data.status === 'SUCCEEDED') {
+            runComplete = true
+          } else if (statusData.data.status === 'FAILED') {
+            throw new Error('Apify run failed')
+          }
+        }
+        attempts++
       }
+
+      if (!runComplete) {
+        throw new Error('Apify run timeout')
+      }
+
+      // Get results from dataset
+      const datasetResponse = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items`, {
+        headers: {
+          'Authorization': `Bearer ${APIFY_TOKEN}`
+        }
+      })
+
+      if (!datasetResponse.ok) {
+        throw new Error(`Failed to get dataset: ${datasetResponse.status}`)
+      }
+
+      const products = await datasetResponse.json()
+      console.log(`Apify returned ${products.length} products`)
+
+      // Process each product
+      products.forEach((p, idx) => {
+        // Extract store name from seller or source
+        const sellerName = (p.seller || p.source || '').toLowerCase()
+        console.log(`Product ${idx} seller: "${sellerName}"`)
+
+        let storeName = null
+        let storeLogo = '🏪'
+        let storeColor = '#666666'
+
+        // Flexible matching for store names
+        if (sellerName.includes('walmart')) {
+          storeName = 'Walmart'
+          storeLogo = '🛒'
+          storeColor = '#0071CE'
+        } else if (sellerName.includes('target')) {
+          storeName = 'Target'
+          storeLogo = '🎯'
+          storeColor = '#CC0000'
+        } else if (sellerName.includes('ebay')) {
+          storeName = 'eBay'
+          storeLogo = '🏷️'
+          storeColor = '#E53238'
+        } else if (sellerName.includes('best buy') || sellerName.includes('bestbuy')) {
+          storeName = 'Best Buy'
+          storeLogo = '💻'
+          storeColor = '#0046BE'
+        }
+
+        // Skip if not a requested store
+        if (!storeName) {
+          console.log(`  Skipping: unknown seller "${sellerName}"`)
+          return
+        }
+
+        if (stores && !stores.includes(storeName)) {
+          console.log(`  Skipping: ${storeName} not selected`)
+          return
+        }
+
+        // Extract price
+        let price = 0
+        if (p.price) {
+          if (typeof p.price === 'string') {
+            price = parseFloat(p.price.replace(/[^0-9.]/g, ''))
+          } else if (typeof p.price === 'number') {
+            price = p.price
+          } else if (p.price.value) {
+            price = parseFloat(p.price.value)
+          }
+        }
+
+        const title = p.title || p.name
+        const url = p.url || p.link
+        const image = p.image || p.thumbnail
+
+        if (price > 0 && title) {
+          // Avoid duplicates
+          const isDuplicate = allResults.some(r => 
+            r.store === storeName && 
+            r.title.toLowerCase().includes(title.toLowerCase().substring(0, 20))
+          )
+
+          if (!isDuplicate) {
+            allResults.push({
+              id: `${storeName.toLowerCase()}-apify-${idx}`,
+              store: storeName,
+              logo: storeLogo,
+              color: storeColor,
+              title: title,
+              price: price,
+              originalPrice: null,
+              rating: p.rating || 4.0,
+              reviews: p.reviews || Math.floor(Math.random() * 1000),
+              image: image,
+              url: url,
+              inStock: true,
+              shipping: p.shipping || 'Varies',
+              isReal: true,
+              source: 'Apify Google Shopping'
+            })
+
+            if (!sourcesUsed.includes(storeName)) {
+              sourcesUsed.push(storeName)
+            }
+            console.log(`  ✅ Added ${storeName}: ${title.substring(0, 50)}...`)
+          }
+        }
+      })
+
+      console.log(`✅ Apify: processed ${products.length} products`)
+
     } catch (e) {
-      errors.push(`Product Search: ${e.message}`)
+      console.error('Apify error:', e)
+      errors.push(`Apify: ${e.message}`)
     }
   }
 
@@ -225,7 +277,7 @@ export async function POST(request) {
       success: false,
       error: 'No results found',
       details: errors,
-      message: 'No results from Amazon or Google Shopping',
+      message: 'No results from Amazon or Apify',
       query,
       timestamp: new Date().toISOString()
     }, { status: 404 })
