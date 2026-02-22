@@ -712,7 +712,7 @@ export default function LivePriceComparator() {
 
           <div style={styles.credits}>
             <p>Powered by RapidAPI (Amazon Data) & Serper.dev (Google Shopping) • Deployed on Vercel</p>
-            <p style={{marginTop: '8px'}}>© 2024 PriceWise Live. All rights reserved.</p>
+            <p style={{marginTop: '8px'}}>© 2026 PriceWise Live. All rights reserved.</p>
           </div>
         </div>
       </footer>
